@@ -1,0 +1,116 @@
+import csv
+from datetime import datetime
+import os
+
+file_name = "poker_bankroll.csv"
+bankroll = 0
+
+if os.path.exists(file_name):
+    with open(file_name, mode="r") as file:
+        reader = list(csv.reader(file))
+        for row in reversed(reader[1:]):  # Skip the header row
+            try:
+                bankroll = float(row[3])  # Try to read the bankroll value
+                break
+            except (IndexError, ValueError):
+                continue  # Skip rows that are invalid
+
+if not os.path.exists(file_name):
+    with open(file_name, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Date", "Type", "Amount", "New Bankroll", "Tournament"])
+
+def update_bankroll(amount, category):
+    global bankroll
+    bankroll += amount
+    # Save to CSV
+    with open(file_name, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), category, amount, bankroll])
+    print(f"Updated Bankroll: ${bankroll:.2f}")
+
+def view_alltime_profit_loss():
+    if not os.path.exists(file_name):
+        print("No transaction history found.")
+        return
+
+    categories = {"Micro-NLH": 0, "Small-NLH": 0, "Bonus": 0, "PLO": 0, "2B-PLO": 0, "Tournament": 0}
+    try:
+        with open(file_name, mode="r") as file:
+            reader = csv.reader(file)
+            next(reader)  # Skip the header row
+            for row in reader:
+                if len(row) >= 3 and row[1] in categories:  # Ensure the row has enough columns
+                    try:
+                        categories[row[1]] += float(row[2])
+                    except ValueError:
+                        print(f"Skipping invalid amount in row: {row}")
+                        continue
+    except Exception as e:
+        print(f"Error reading transaction history: {e}")
+        return
+
+    print("\n--- All-Time Profit/Loss by Category ---")
+    for category, total in categories.items():
+        print(f"{category:<15}: ${total:.2f}")
+
+
+def main():
+    global bankroll
+    while True:
+        print("\n--- Poker Bankroll Tracker ---")
+        print(f"Current Bankroll: ${bankroll:.2f}")
+        print("1. Add/Subtract a Transaction")
+        print("2. View Transaction History")
+        print("3. Exit")
+        print("4. View All-Time Profit/Loss by Category")
+
+        choice = input("Enter your choice: ")
+        if choice == "1":
+            try:
+                amount = float(input("Enter the transaction amount (+ for win, - for loss): "))
+                print("Transaction type options:")
+                print("1. Micro-NLH")
+                print("2. Small-NLH")
+                print("3. Bonus")
+                print("4. PLO")
+                print("5. 2B-PLO")
+                print("6. Tournament")
+                type_choice = input("Select transaction type (1-6): ")
+
+                types = {
+                    "1": "Micro-NLH",
+                    "2": "Small-NLH",
+                    "3": "Bonus",
+                    "4": "PLO",
+                    "5": "2B-PLO",
+                    "6": "Tournament"
+                }
+                category = types.get(type_choice, "Unknown")
+
+                update_bankroll(amount, category)
+            except ValueError:
+                print("Invalid input. Please enter a numeric value.")
+
+        elif choice == "2":
+            try:
+                with open(file_name, mode="r") as file:
+                    reader = csv.reader(file)
+                    print("\n--- Transaction History ---")
+                    for row in reader:
+                        print(f"{row[0]:<20} | {row[1]:<10} | {row[2]:>10} | {row[3]:>15}")
+            except FileNotFoundError:
+                print("No transaction history found.")
+
+        elif choice == "3":
+            print("Exiting the tracker.")
+            break
+
+        elif choice == "4":
+            view_alltime_profit_loss()
+
+        else:
+            print("Invalid choice. Please try again.")
+
+if __name__ == "__main__":
+    main()
