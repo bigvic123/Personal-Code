@@ -1,0 +1,54 @@
+{
+  "name": "lila",
+  "version": "2.0.0",
+  "private": true,
+  "description": "lichess.org: the forever free, adless and open source chess server",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lichess-org/lila.git"
+  },
+  "keywords": [
+    "chess",
+    "lichess"
+  ],
+  "author": "Thibault Duplessis and the gang",
+  "license": "AGPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/lichess-org/lila/issues"
+  },
+  "homepage": "https://lichess.org",
+  "packageManager": "pnpm@9.1.0+sha256.22e36fba7f4880ecf749a5ca128b8435da085ecd49575e7fb9e64d6bf4fad394",
+  "engines": {
+    "node": ">=20",
+    "pnpm": "^9"
+  },
+  "lint-staged": {
+    "*.{js,ts,md,json,scss}": "prettier --write"
+  },
+  "dependencies": {
+    "@types/node": "^20.11.28",
+    "@types/web": "^0.0.142",
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
+    "ab": "github:lichess-org/ab-stub",
+    "chessground": "^9.0.5",
+    "eslint": "^8.57.0",
+    "lint-staged": "^15.2.2",
+    "onchange": "^7.1.0",
+    "prettier": "3.0.2",
+    "typescript": "^5.4.2"
+  },
+  "scripts": {
+    "format": "prettier --write --log-level warn .",
+    "check-format": "prettier --check --log-level warn .",
+    "watch-format": "onchange \"**/*\" -- prettier --write --log-level warn {{changed}}",
+    "add-hooks": "git config --add core.hooksPath bin/git-hooks",
+    "remove-hooks": "git config --unset core.hooksPath bin/git-hooks",
+    "lint": "eslint . --ext .ts",
+    "journal": "journalctl --user -fu lila -o cat",
+    "metals": "tail -F .metals/metals.log | stdbuf -oL cut -c 21- | rg -v '(notification for request|handleCancellation)'",
+    "serverlog": "pnpm journal & pnpm metals",
+    "multilog": "pnpm serverlog & ui/build -r",
+    "minilog": "pnpm journal | grep -E -v fishnet & ui/build -cdr"
+  }
+}
