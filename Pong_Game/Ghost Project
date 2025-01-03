@@ -1,0 +1,335 @@
+#include <iostream>
+#include <fstream>
+
+#include <windows.h>
+#include <winuser.h>
+
+#include <vector>
+
+using namespace std;
+
+const int pole_rows = 101;
+const int pole_cols = 200;
+
+const char GROUND_CH = '_';
+const int GROUND = pole_rows * 4/5;
+
+char field[pole_rows][pole_cols];
+const char EMPTY_CH = 0;
+const char BORDER_CH = ' ';
+
+
+enum COLORS {
+    BLACK = 0,
+    BLUE = FOREGROUND_BLUE,
+    CYAN = FOREGROUND_BLUE | FOREGROUND_GREEN,
+    GREEN = FOREGROUND_GREEN,
+    RED = FOREGROUND_RED,
+    BROWN = FOREGROUND_RED | FOREGROUND_GREEN,
+    PURPLE = FOREGROUND_RED | FOREGROUND_BLUE,
+    LIGHT_GREY =  FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN,
+
+    GREY = 0 | FOREGROUND_INTENSITY,
+    LIGHT_BLUE = FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+    LIGHT_CYAN = FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY,
+    LIGHT_GREEN = FOREGROUND_GREEN | FOREGROUND_INTENSITY,
+    LIGHT_RED = FOREGROUND_RED | FOREGROUND_INTENSITY,
+    YELLOW = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY,
+    PINK = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+    WHITE =  FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY
+};
+
+const COLORS BACKGROUND_COLOR = WHITE;
+
+HANDLE hConsoleOutput = ::GetStdHandle(STD_OUTPUT_HANDLE);
+COORD screen_buf = {pole_rows , pole_cols};
+CHAR_INFO blank_screen[(pole_rows) * (pole_cols)] = {0};
+
+
+
+void setFontSize(int FontSize){
+    CONSOLE_FONT_INFOEX info = {0};
+    info.cbSize       = sizeof(info);
+    info.dwFontSize.X = FontSize; // leave X as zero
+    info.dwFontSize.Y = FontSize; // leave X as zero
+    info.FontWeight   = FW_NORMAL;
+    wcscpy(info.FaceName, L"Terminal");
+    SetCurrentConsoleFontEx(GetStdHandle(STD_OUTPUT_HANDLE), NULL, &info);
+}
+
+
+
+
+void draw_char(char ch, int y, int x, COLORS foreground_color, COLORS background_color) {
+    CHAR_INFO ch_info;
+    ch_info.Char.AsciiChar = ch;
+    ch_info.Attributes = foreground_color | (background_color << 4);
+
+    COORD buf_size = {1, 1};
+    COORD buf_coord = {0, 0};
+    SMALL_RECT screen_pos = {x, y, x+1, y+1};
+    ::WriteConsoleOutput(hConsoleOutput, &ch_info, buf_size, buf_coord, &screen_pos);
+
+}
+
+void clear_screen() {
+    COORD buf_coord = {0, 0};
+    SMALL_RECT screen_pos = {0, 0, screen_buf.X, screen_buf.Y};
+    ::WriteConsoleOutput(hConsoleOutput, blank_screen, screen_buf, buf_coord, &screen_pos);
+}
+
+void set_background(COLORS bgr) {
+    for (int i = 0; i < screen_buf.X; i++) {
+        for (int j = 0; j < screen_buf.Y; j++) {
+             draw_char(' ', i, j, bgr, bgr);
+        }
+    }
+
+}
+
+
+void init(){
+
+    SMALL_RECT rect = {0, 0, screen_buf.Y, screen_buf.X};
+
+    ::SetConsoleScreenBufferSize(hConsoleOutput, screen_buf);
+    ::SetConsoleWindowInfo(hConsoleOutput, TRUE, &rect);
+    ::SetConsoleTitle("FIGURES...");
+
+    setFontSize(8);
+}
+
+void print_field() {
+    for (int r = 0; r < pole_rows; r++) {
+        for (int c = 0; c < pole_cols; c++) {
+            cout << field[r][c];
+        }
+        cout << endl;
+    }
+
+    return;
+}
+
+inline void change_char(char ch, int r, int c, COLORS txt, COLORS bgr) {
+    draw_char(ch, r, c, txt, bgr);
+    field[r][c] = ch;
+
+    return;
+}
+
+void set_border() {
+    for (int r = 0; r < pole_rows; r++) {
+        change_char(BORDER_CH, r, 0, WHITE, WHITE);
+        change_char(BORDER_CH, r, pole_cols-1, WHITE, WHITE);
+    }
+
+    for (int c = 0; c < pole_cols; c++) {
+        change_char(BORDER_CH, 0, c, WHITE, WHITE);
+        change_char(BORDER_CH, pole_rows-1, c, WHITE, WHITE);
+    }
+
+    return;
+}
+
+const int PLAYER_ROWS = 17;
+const int PLAYER_COLS = 17;
+
+struct TBullet {
+    int row;
+    int col;
+    char ch = '>';
+
+    void print();
+    void move();
+};
+
+void TBullet::print() {
+    change_char(ch, row, col, BLACK, BACKGROUND_COLOR);
+}
+
+void TBullet::move() {
+    change_char(' ', row, col, BACKGROUND_COLOR, BACKGROUND_COLOR);
+    col++;
+}
+
+
+struct TPlayer {
+    int row;
+    int col;
+
+    char img[PLAYER_ROWS][PLAYER_COLS];
+    vector<TBullet> bullets;
+
+    void print();
+    void print_bullets();
+    void shoot();
+    void move();
+};
+
+void TPlayer::print_bullets() {
+    int sz = bullets.size();
+    for (int i = 0; i <sz; i++) {
+        bullets[i].print();
+
+    }
+}
+
+void TPlayer::shoot() {
+    TBullet newBullet;
+
+    newBullet.row = row + PLAYER_ROWS/2;
+    newBullet.col = col + PLAYER_COLS;
+
+    bullets.push_back(newBullet);
+
+    return;
+}
+
+void TPlayer::move() {
+    if (GetAsyncKeyState('W')) {row--;}
+    else {
+        row++;
+        if (row > GROUND - PLAYER_ROWS) {
+            row = GROUND - PLAYER_ROWS;
+        }
+    }
+    ///if (GetAsyncKeyState('S')) {row++;}
+    if (GetAsyncKeyState('A')) {col--;}
+    if (GetAsyncKeyState('D')) {col++;}
+    if (GetAsyncKeyState(VK_SPACE)) {shoot();}
+
+
+    int sz = bullets.size();
+    for (int i = 0; i < sz; i++) {
+        bullets[i].move();
+    }
+
+    return;
+}
+
+
+void clean() {
+    COLORS color;
+    for (int r = 1; r < PLAYER_ROWS-1; r++) {
+        for (int c = 1; c < PLAYER_COLS-2; c++) {
+            switch (field[r][c+1]) {
+                case 'r' : color = RED; break;
+                case 'b' : color = BLACK; break;
+                case 'u' : color = BLUE; break;
+                case 'w' : color = WHITE; break;
+
+                default: color = BACKGROUND_COLOR;
+            }
+            change_char(field[r][c+1], r, c, color, color);
+        }
+    }
+
+    return;
+}
+
+void add_ground() {
+    for (int c = 1; c < pole_cols-1; c++) {
+        change_char(GROUND_CH, GROUND, c, BROWN, BACKGROUND_COLOR);
+    }
+}
+
+void load_map() {
+    int max_stones = 10;
+    int br = 0;
+    int rand_r, rand_c, rand_l;
+
+    while(br < max_stones) {
+        rand_r = 1 + rand() % (pole_rows-2);
+        rand_c = 1 + rand() % (pole_cols-2);
+        rand_l = rand() % 5;
+
+        if (field[rand_r][rand_c] == 0) {
+            for (int i = 0; i < rand_l; i++) {
+                change_char('#', rand_r, rand_c + i, GREY, GREY);
+            }
+            br++;
+        }
+    }
+}
+
+void clean() {
+    for (int r = 1; r < pole_rows-1; r++) {
+        for (int c = 1; c < pole_cols-1; c++) {
+            if ((field[r][c] != 0) && (field[r][c] != GROUND_CH)) {
+                change_char(0, r, c, BACKGROUND_COLOR, BACKGROUND_COLOR);
+            }
+        }
+    }
+}
+
+void print_score(int value, int row, int col) {
+    int pos = col + 10;
+    while (value != 0) {
+        draw_char((value % 10) + '0', r, pos, RED, BACKGROUND_COLOR);
+        pos--;
+        value = value/10;
+    }
+}
+
+void print_string(string str, int row, int col) {
+    int len = str.length();
+
+    for (int i = 0; i < len; i++) {
+            draw_char(str[i], row, col + i, RED, BACKGROUND_COLOR);
+    }
+
+    return;
+}
+
+int main() {
+    int score = 0;
+
+    strand(time(0));
+
+    init();
+    set_background(BACKGROUND_COLOR);
+    set_border();
+    add_ground();
+    load_map();
+    ///print_field();
+
+    TPlayer ghost;
+
+    ghost.row = GROUND - PLAYER_ROWS;
+    ghost.col = 1;
+
+    ifstream file_in;
+    file_in.open("ghost.txt");
+    /// TODO: error handling
+
+    for (int r = 0; r < PLAYER_ROWS; r++) {
+        for (int c = 0; c < PLAYER_COLS; c++) {
+            file_in >> ghost.img[r][c];
+        }
+    }
+    file_in.close();
+
+    ghost.print();
+    int tmp_r = 0, tmp_c = 0;
+    while (1) {
+        tmp_r = ghost.row;
+        tmp_c = ghost.col;
+
+        ///clean();
+
+        ghost.move();
+
+        ghost.print();
+        ghost.print_bullets();
+
+
+        Sleep(100);
+        score++;
+        print_string("Score: ", pole_rows, 3);
+        print_score(score, pole_rows, 10);
+    }
+
+    Sleep(10000);
+
+    return 0;
+}
