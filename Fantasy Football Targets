@@ -1,0 +1,149 @@
+import csv
+import sys
+
+# -------------------------- CONFIG ---------------------------
+DYNASTY_FILE   = "dynasty.csv"     # must have columns: name, overallRank
+BESTBALL_FILE  = "bestball.csv"    # must have columns: firstName, lastName, adp
+
+DELIM_DYNASTY   = ";"  # set ";" if dynasty file is semicolon-delimited, otherwise ","
+DELIM_BESTBALL  = ","  # set "," if bestball file is comma-delimited, otherwise ";"
+
+ENCODING_DYNASTY   = "utf-8-sig"
+ENCODING_BESTBALL  = "utf-8-sig"
+
+TOP_N   = 250   # We'll compare top 250 from each list
+SHOW_N  = 30    # We'll show the 30 biggest differences
+
+def normalize_name(full_name):
+    """
+    Lowercase, remove punctuation/spaces so 'Ja'Marr Chase' -> 'jamarr chase'.
+    """
+    import re
+    cleaned = re.sub(r"[^a-zA-Z0-9 ]+", "", full_name)
+    cleaned = " ".join(cleaned.split())
+    return cleaned.lower()
+
+def load_dynasty_ranks(filepath, top_n=250, delimiter=",", encoding="utf-8-sig"):
+    """
+    Reads a dynasty CSV that must have 'name' and 'overallRank'.
+    Only keep rows where overallRank <= top_n.
+    Returns a dict { normalizedName : rank }.
+    """
+    result = {}
+    total_rows = 0
+    used_rows = 0
+    with open(filepath, newline="", encoding=encoding) as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+        if "name" not in reader.fieldnames or "overallRank" not in reader.fieldnames:
+            print(f"ERROR: {filepath} is missing 'name' or 'overallRank'.")
+            print("Columns found:", reader.fieldnames)
+            return {}
+
+        for row in reader:
+            total_rows += 1
+            name_str = row.get("name", "")
+            rank_str = row.get("overallRank", "")
+
+            try:
+                rank_val = int(rank_str)
+            except ValueError:
+                continue
+
+            if name_str and rank_val <= top_n:
+                norm = normalize_name(name_str)
+                result[norm] = rank_val
+                used_rows += 1
+
+    print(f"[Dynasty] {filepath}: read {total_rows} rows, used {used_rows} (rank ≤ {top_n}).")
+    return result
+
+def load_bestball_ranks(filepath, top_n=250, delimiter=",", encoding="utf-8-sig"):
+    """
+    Reads a bestball CSV that must have 'firstName', 'lastName', 'adp'.
+    Sort ascending by adp, keep top_n => rank=1..N.
+    Returns dict { normalizedName: rank }.
+    """
+    players = []
+    total_rows = 0
+    with open(filepath, newline="", encoding=encoding) as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+
+        needed = {"firstName", "lastName", "adp"}
+        if not needed.issubset(reader.fieldnames):
+            print(f"ERROR: {filepath} missing one of {needed}.")
+            print("Columns found:", reader.fieldnames)
+            return {}
+
+        for row in reader:
+            total_rows += 1
+            first = row.get("firstName", "")
+            last  = row.get("lastName", "")
+            adp_str = row.get("adp", "")
+
+            if not first or not last:
+                continue
+
+            try:
+                adp_val = float(adp_str)
+            except ValueError:
+                continue
+
+            full_name = f"{first} {last}"
+            players.append((full_name, adp_val))
+
+    # sort ascending by adp
+    players.sort(key=lambda x: x[1])
+
+    bestball_dict = {}
+    rank = 1
+    for (full_name, adp_val) in players:
+        if rank > top_n:
+            break
+        norm = normalize_name(full_name)
+        bestball_dict[norm] = rank
+        rank += 1
+
+    print(f"[BestBall] {filepath}: read {total_rows} rows, used {len(bestball_dict)} (lowest {top_n} ADPs).")
+    return bestball_dict
+
+def main():
+    # 1) Load the top 250 from each list
+    dynasty_ranks  = load_dynasty_ranks(DYNASTY_FILE,  TOP_N, DELIM_DYNASTY,  ENCODING_DYNASTY)
+    bestball_ranks = load_bestball_ranks(BESTBALL_FILE, TOP_N, DELIM_BESTBALL, ENCODING_BESTBALL)
+
+    print("[Dynasty] sample keys:", list(dynasty_ranks.keys())[:5])
+    print("[BestBall] sample keys:", list(bestball_ranks.keys())[:5])
+
+    # 2) Find intersection
+    common = set(dynasty_ranks.keys()) & set(bestball_ranks.keys())
+    print(f"Found {len(common)} players in top-{TOP_N} of both lists.")
+
+    if not common:
+        print("No overlap found. Possibly name mismatch or columns. Exiting.")
+        sys.exit()
+
+    # 3) We want "early best ball, late dynasty"
+    # -> bestBallRank < dynastyRank
+    # Define difference = (dynastyRank - bestBallRank).
+    # Keep only if difference > 0, i.e. bestBall < dynasty.
+    # Then sort descending by that difference.
+    differences = []
+    for pkey in common:
+        d_rank = dynasty_ranks[pkey]
+        b_rank = bestball_ranks[pkey]
+        diff   = d_rank - b_rank
+        if diff > 0:  # means bestBall < dynasty
+            differences.append((pkey, d_rank, b_rank, diff))
+
+    # sort by difference descending
+    differences.sort(key=lambda x: x[3], reverse=True)
+
+    # 4) Print top 30
+    print(f"\nPlayers who are earlier in Best Ball but later in Dynasty (top {SHOW_N}):")
+    print(" Name                      DynRank  BBallRank  Diff")
+    print("--------------------------------------------------")
+    for i, (pkey, d_rank, b_rank, df) in enumerate(differences[:SHOW_N], start=1):
+        print(f"{i:2d}) {pkey:<24} {d_rank:7}  {b_rank:8}   {df:4}")
+
+if __name__ == "__main__":
+    main()
